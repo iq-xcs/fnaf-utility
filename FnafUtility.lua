@@ -605,6 +605,107 @@ local function startCleanLoop()
 end
 
 -- ══════════════════════════════════════════════════
+--  POWERBOX + FUSEBOXES
+-- ══════════════════════════════════════════════════
+
+local powerboxAuto = false
+local fuseboxAuto  = false
+local powerConn    = nil
+local fuseConn     = nil
+
+-- PowerBox — Repair (включается когда Enabled=true, т.е. сломан)
+local function getPowerBoxPrompt()
+    local ok, pp = pcall(function()
+        return workspace.Map.ImportantSpots.PowerBox.Prompt.ProximityPrompt
+    end)
+    if ok and pp and pp:IsA("ProximityPrompt") then return pp end
+    return nil
+end
+
+local function repairPowerBox()
+    local pp = getPowerBoxPrompt()
+    if not pp or not pp.Enabled then return false end
+    local hrp = getHRP(); if not hrp then return false end
+    local parent = pp.Parent
+    local pos
+    if parent:IsA("BasePart") then pos = parent.Position
+    elseif parent:IsA("Model") then
+        local ok2, p2 = pcall(function() return parent:GetPivot().Position end)
+        if ok2 then pos = p2 end
+    end
+    if pos then
+        hrp.CFrame = CFrame.new(pos + Vector3.new(0, 3, 2))
+        task.wait(0.1)
+    end
+    pcall(function() fireproximityprompt(pp) end)
+    print("[PowerBox] Починен")
+    return true
+end
+
+local function startPowerWatch()
+    if powerConn then powerConn:Disconnect() end
+    local t = 0
+    powerConn = RunService.Heartbeat:Connect(function(dt)
+        if not powerboxAuto then powerConn:Disconnect(); powerConn=nil; return end
+        t += dt; if t < 1 then return end; t = 0
+        local pp = getPowerBoxPrompt()
+        if pp and pp.Enabled then repairPowerBox() end
+    end)
+end
+
+-- FuseBoxes — Turn On все которые Enabled
+local function getAllFusePrompts()
+    local results = {}
+    local ok, folder = pcall(function()
+        return workspace.Map.ImportantSpots.FuseBoxes
+    end)
+    if not ok or not folder then return results end
+    for _, child in ipairs(folder:GetChildren()) do
+        for _, pp in ipairs(child:GetDescendants()) do
+            if pp:IsA("ProximityPrompt") and pp.ActionText == "Turn On" and pp.Enabled then
+                local part = pp.Parent
+                local pos
+                if part:IsA("BasePart") then pos = part.Position end
+                if pos then
+                    table.insert(results, { prompt=pp, pos=pos, name=child.Name })
+                end
+            end
+        end
+    end
+    return results
+end
+
+local function activateAllFuses()
+    local hrp = getHRP(); if not hrp then return end
+    local fuses = getAllFusePrompts()
+    if #fuses == 0 then return end
+    print("[FuseBox] Включаем", #fuses, "предохранителей")
+    for _, entry in ipairs(fuses) do
+        if not fuseboxAuto then break end
+        hrp.CFrame = CFrame.new(entry.pos + Vector3.new(0, 3, 2))
+        task.wait(0.08)
+        pcall(function() fireproximityprompt(entry.prompt) end)
+        task.wait(0.1)
+        print("[FuseBox] Включён:", entry.name)
+    end
+    -- возвращаемся на точку возврата
+    teleportTo(returnPos)
+end
+
+local function startFuseWatch()
+    if fuseConn then fuseConn:Disconnect() end
+    local t = 0
+    fuseConn = RunService.Heartbeat:Connect(function(dt)
+        if not fuseboxAuto then fuseConn:Disconnect(); fuseConn=nil; return end
+        t += dt; if t < 2 then return end; t = 0
+        local fuses = getAllFusePrompts()
+        if #fuses > 0 then
+            task.spawn(activateAllFuses)
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════
 --  МАРИОНЕТКА
 -- ══════════════════════════════════════════════════
 
